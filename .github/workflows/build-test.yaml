@@ -17,31 +17,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.9"
-          cache: "poetry"
+          cache: "pip"
           architecture: "x64"
-      - name: "Setup Environment"
-        run: |
-          poetry install --no-root
-
-      - name: Generate Documentation
-        run: |
-          cat README.md | sed 's/package\/appserver/appserver/g' > package/README.md
-          poetry run grip README.md --export README.html --title ""
-          #poetry run pandoc -s README.html -o package/README.pdf
+      - run: pip install -r requirements.txt
 
       - name: Generate Addon
         run: |
           echo "Version is now calculated by ucc-gen"
-          [ -f ./globalConfig.json ] && poetry run ucc-gen -o output -v || poetry run scripts/build.sh
+          ucc-gen build -o output -v
           mv output/$(basename $(pwd)) output/app
-          # echo "Fix to allow boto3 to be uploaded"
-          # sed -i.bak -e '267,282d' output/app/lib/botocore/session.py
-          # rm -f output/app/lib/botocore/session.py.bak
-          # set -x
-          # ls *
-          # rm -rf output/app/lib/3rdparty/**/*.pyc
-          # rm -rf output/app/lib/3rdparty/linux/nacl/__pycache__/*
-          # rm -rf output/app/lib/3rdparty/linux/cffi/__pycache__/*
 
       - name: Generating package
         run: |
