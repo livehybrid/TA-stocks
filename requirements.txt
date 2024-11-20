@@ -1,1 +1,2 @@
 splunk-add-on-ucc-framework==5.53.1
+splunk-appinspect==3.8.1
