@@ -41,17 +41,17 @@ jobs:
           path: dist/
 
   appinspect:
-    name: quality-appinspect-${{ matrix.tags }}
+    name: quality-appinspect
     needs: package
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     strategy:
       fail-fast: false
       matrix:
         tags:
-          - "cloud"
-          - "private_victoria"
-          - "future"
+           - "cloud"
+           - "private_victoria"
+           - "future"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
