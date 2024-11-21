@@ -80,7 +80,7 @@ jobs:
             
   appinspectapi:
     name: quality-appinspect-api
-    needs: package
+    needs: appinspect
     if: ${{ !cancelled() && needs.package.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
