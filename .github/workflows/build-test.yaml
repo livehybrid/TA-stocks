@@ -108,6 +108,8 @@ jobs:
   publish-gh:
     needs: 
       - package
+      - appinspect
+      - appinspectapi
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     container: cimg/go:1.19
