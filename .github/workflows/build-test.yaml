@@ -40,20 +40,10 @@ jobs:
           name: dist
           path: dist/
 
-      # - name: Local Inspect package
-      #   run: |
-      #     PACKAGE_ID=$(basename $(pwd))
-      #     PACKAGE=$(ls dist/*)
-      #     mkdir -p reports
-      #     splunk-appinspect inspect $PACKAGE --mode=precert --data-format junitxml --output-file reports/$PACKAGE_ID-splunk_appinspect.xml --excluded-tags manual --excluded-tags prerelease  --included-tags splunk_appinspect
-      #     splunk-appinspect inspect $PACKAGE --mode=precert --data-format junitxml --output-file reports/$PACKAGE_ID-cloud.xml --excluded-tags manual --excluded-tags prerelease  --included-tags cloud
-      #     splunk-appinspect inspect $PACKAGE --mode=precert --data-format junitxml --output-file reports/$PACKAGE_ID-private-victoria.xml --included-tags private_victoria
-      #     splunk-appinspect inspect $PACKAGE --mode=precert --data-format junitxml --output-file reports/$PACKAGE_ID-future.xml --included-tags future
-          
   appinspect:
     name: quality-appinspect-${{ matrix.tags }}
     needs: package
-    if: ${{ !cancelled() && needs.build.result == 'success' }}
+    # if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -71,18 +61,18 @@ jobs:
       - name: Scan
         uses: splunk/appinspect-cli-action@v1.9
         with:
-          app_path: build/package/
+          app_path: dist/
           included_tags: ${{ matrix.tags }}
           result_file: appinspect_result_${{ matrix.tags }}.json
       - name: upload-appinspect-report
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: appinspect_${{ matrix.tags }}_checks.json
           path: appinspect_result_${{ matrix.tags }}.json
       - name: upload-markdown
         if: matrix.tags == 'manual'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: check_markdown
           path: |
@@ -93,13 +83,6 @@ jobs:
     needs: package
     # if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
-    # strategy:
-    #   fail-fast: false
-    #   matrix:
-    #     tags:
-    #       - "cloud"
-    #       - "private_victoria"
-    #       - "future"
     steps:
       - uses: actions/checkout@v3
       - uses: actions/download-artifact@v4
@@ -123,7 +106,8 @@ jobs:
           path: reports
 
   publish-gh:
-    needs: package
+    needs: 
+      - package
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     container: cimg/go:1.19
