@@ -43,7 +43,7 @@ jobs:
   appinspect:
     name: quality-appinspect-${{ matrix.tags }}
     needs: package
-    # if: ${{ !cancelled() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -81,7 +81,7 @@ jobs:
   appinspectapi:
     name: quality-appinspect-api
     needs: package
-    # if: ${{ !cancelled() && needs.build.result == 'success' }}
+    if: ${{ !cancelled() && needs.package.result == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -102,8 +102,8 @@ jobs:
       - name: Upload Reports
         uses: actions/upload-artifact@v4
         with:
-          name: reports
-          path: reports
+          name: AppInspect_response.html
+          path: AppInspect_response.html
 
   publish-gh:
     needs: 
