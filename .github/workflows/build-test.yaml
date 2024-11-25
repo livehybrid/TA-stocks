@@ -6,7 +6,11 @@ on:
       - "**"
     tags:
       - "v*.*.*"
-
+      
+permissions:
+  pull-requests: write
+  actions: write
+  checks: write
 jobs:
   package:
     runs-on: ubuntu-latest
