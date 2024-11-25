@@ -114,10 +114,10 @@ jobs:
         if: always()
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: Test Results - ${{ matrix.tags }}
+          name: quality-appinspect (${{ matrix.tags }})
           conclusion: ${{ job.status }}
           output: |
-            {"summary":"${{ steps.generate-markdown.outputs.markdown_table }}"}
+            {"summary":"${{ steps.generate-markdown.outputs.markdown_table | replace('%0A','\n') }}"}
       - name: upload-appinspect-report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
