@@ -65,6 +65,7 @@ jobs:
           included_tags: ${{ matrix.tags }}
           result_file: appinspect_result_${{ matrix.tags }}.json
       - name: Generate Markdown Table
+        if: always()
         id: generate-markdown
         run: |
           echo "Starting JSON parsing..."
@@ -112,6 +113,7 @@ jobs:
           EOF
       - name: Write Markdown to GITHUB_OUTPUT
         id: write-markdown
+        if: always()
         run: |
           markdown_table=$(<markdown_output.txt)
           escaped_markdown=$(echo "$markdown_table" | sed -E ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\n/\\n/g')
@@ -123,7 +125,7 @@ jobs:
           name: quality-appinspect (${{ matrix.tags }})
           conclusion: ${{ job.status }}
           output: |
-            {"summary":"```${{ steps.write-markdown.outputs.markdown_table }}```"}
+            {"summary":"${{ steps.write-markdown.outputs.markdown_table }}"}
       - name: upload-appinspect-report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
