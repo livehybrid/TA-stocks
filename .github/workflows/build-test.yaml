@@ -64,6 +64,32 @@ jobs:
           app_path: dist/
           included_tags: ${{ matrix.tags }}
           result_file: appinspect_result_${{ matrix.tags }}.json
+      - name: Generate Markdown Table
+        id: generate-markdown
+        run: |
+          echo "Starting JSON parsing..."
+          python3 - <<EOF
+          import json
+
+          # Load the JSON file
+          with open("appinspect_${{ matrix.tags }}_checks.json", "r") as file:
+              data = json.load(file)
+
+          # Extract checks and results
+          checks = []
+          for group in data.get("reports", {}).get("groups", []):
+              for check in group.get("checks", []):
+                  checks.append({"name": check.get("name", "N/A"), "result": check.get("result", "N/A")})
+
+          # Generate Markdown table
+          markdown_table = "| Check Name | Result |\n|------------|--------|\n"
+          for check in checks:
+              markdown_table += f"| {check['name']} | {check['result']} |\n"
+
+          # Write the Markdown to GITHUB_OUTPUT
+          with open("${GITHUB_OUTPUT}", "a") as output_file:
+              output_file.write(f"markdown_table={markdown_table}")
+          EOF
       - uses: LouisBrunner/checks-action@v2.0.0
         if: always()
         with:
