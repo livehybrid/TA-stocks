@@ -114,7 +114,7 @@ jobs:
         if: always()
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: Test XYZ
+          name: Test Results - ${{ matrix.tags }}
           conclusion: ${{ job.status }}
           output: |
             {"summary":"${{ steps.generate-markdown.outputs.markdown_table }}"}
