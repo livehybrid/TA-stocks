@@ -95,16 +95,25 @@ jobs:
               for group in report.get("groups", []):
                   if isinstance(group, dict):  # Ensure group is a dictionary
                       for check in group.get("checks", []):
-                          checks.append({"name": check.get("name", "N/A"), "result": check.get("result", "not_applicable")})
+                          messages = [message.get("message", "") for message in check.get("messages", [])]
+                          checks.append(
+                              {
+                                  "name": check.get("name", "N/A"),
+                                  "result": check.get("result", "not_applicable"),
+                                  "messages": "<br>".join(messages),  # Join multiple messages with a semicolon
+                              }
+                          )
               
               sorted_checks = sorted(checks, key=lambda x: priority_order.index(x["result"]) if x["result"] in priority_order else len(priority_order))
               
-              # Generate Markdown table with color-coded results
-              markdown_table = "| Check Name | Result |\n|------------|--------|\n"
+              # Generate Markdown table with messages as a new column
+              markdown_table = "| Check Name | Result | Messages |\n|------------|--------|----------|\n"
               for check in sorted_checks:
                   result = check["result"]
                   icon = categories.get(result, ":question:")  # Default icon for unknown results
-                  markdown_table += f"| {check['name']} | {icon} {result} |\n"
+                  messages = check["messages"] if check["messages"] else "N/A"  # Show "N/A" if no messages
+                  markdown_table += f"| {check['name']} | {icon} {result} | {messages} |\n"
+
               
               # Write the Markdown table to GITHUB_OUTPUT
               escaped_markdown_table = markdown_table.replace("\n", "%0A")
