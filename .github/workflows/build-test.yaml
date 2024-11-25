@@ -1,4 +1,4 @@
-Twname: Splunk App CI/CD 2
+name: Splunk App CI/CD
 
 on:
   push:
