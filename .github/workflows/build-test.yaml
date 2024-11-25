@@ -12,10 +12,6 @@ permissions:
 jobs:
   package:
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
-      actions: write
-      checks: write
     steps:
       - name: Package app
         uses: livehybrid/deploy-splunk-app-action@main
@@ -25,77 +21,16 @@ jobs:
   appinspect:
     name: quality-appinspect
     needs: package
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        tags: ["cloud", "private_victoria", "future"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - name: scan
-        uses: splunk/appinspect-cli-action@v2.8.1
-        with:
-          app_path: dist/
-          included_tags: ${{ matrix.tags }}
-          result_file: appinspect_result_${{ matrix.tags }}.json
-
-      - name: Run Generate Markdown Action
-        id: generate-markdown
-        if: always()
-        uses: livehybrid/generate-appinspect-markdown-action@main
-        with:
-          json_file: "appinspect_result_${{ matrix.tags }}.json"
-          tag: "${{ matrix.tags }}"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          include_not_applicable: False
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-cli.yml@main
 
 
   quality-appinspect-api:
     name: quality-appinspect-api
     needs:
       - appinspect
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - name: Run AppInspect API
-        uses: splunk/appinspect-api-action@v3.0
-        with:
-          username: "${{ inputs.splunkbase-username }}"
-          password: "${{ inputs.splunkbase-password }}"
-          app_path: dist
-          included_tags: private_victoria
-          excluded_tags: offensive
-
-      - name: Upload Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: reports
-          path: reports/
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-api.yml@main
   
   publish-gh:
     needs:
       - appinspect
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    container: cimg/go:1.19
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: .
-      - uses: ncipollo/release-action@v1
-        with:
-          artifacts: "dist/*"
-          allowUpdates: true
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main
