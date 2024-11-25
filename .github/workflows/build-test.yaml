@@ -106,8 +106,9 @@ jobs:
                   markdown_table += f"| {check['name']} | {icon} {result} |\n"
               
               # Write the Markdown table to GITHUB_OUTPUT
+              escaped_markdown_table = markdown_table.replace("\n", "%0A")
               with open("${GITHUB_OUTPUT}", "a") as output_file:
-                  output_file.write(f"markdown_table={markdown_table}")
+                  output_file.write(f"markdown_table={escaped_markdown_table}")
           EOF
       - uses: LouisBrunner/checks-action@v2.0.0
         if: always()
