@@ -77,7 +77,7 @@ jobs:
       
           # Extract checks and results
           checks = []
-          for group in data.get("reports", {}).get("groups", []):
+          for group in data.get("reports", {})[0].get("groups", []):
               if isinstance(group, dict):  # Ensure group is a dictionary
                   for check in group.get("checks", []):
                       checks.append({"name": check.get("name", "N/A"), "result": check.get("result", "N/A")})
