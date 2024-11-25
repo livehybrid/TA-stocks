@@ -107,9 +107,16 @@ jobs:
               
               # Write the Markdown table to GITHUB_OUTPUT
               escaped_markdown_table = markdown_table.replace("\n", "%0A")
-              with open("${GITHUB_OUTPUT}", "a") as output_file:
-                  output_file.write(f"markdown_table={escaped_markdown_table}")
+              with open("markdown_output.txt", "w") as file:
+                  file.write(markdown_table)
           EOF
+      - name: Write Markdown to GITHUB_OUTPUT
+        id: write-markdown
+        run: |
+          markdown_table=$(<markdown_output.txt)
+          echo "markdown_table<<EOF" >> $GITHUB_OUTPUT
+          echo "$markdown_table" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
       - uses: LouisBrunner/checks-action@v2.0.0
         if: always()
         with:
@@ -117,7 +124,7 @@ jobs:
           name: quality-appinspect (${{ matrix.tags }})
           conclusion: ${{ job.status }}
           output: |
-            {"summary":"${{ steps.generate-markdown.outputs.markdown_table | replace('%0A','\n') }}"}
+            {"summary":"${{ steps.write-markdown.outputs.markdown_table }}"}
       - name: upload-appinspect-report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
