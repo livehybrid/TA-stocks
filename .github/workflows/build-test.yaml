@@ -1,4 +1,4 @@
-name: Splunk App CI/CD 2
+Twname: Splunk App CI/CD 2
 
 on:
   push:
@@ -131,7 +131,7 @@ jobs:
         if: always()
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          name: quality-appinspect (${{ matrix.tags }})
+          name: Test Results - CLI - (${{ matrix.tags }})
           conclusion: ${{ job.status }}
           output: |
             {"summary":"${{ steps.write-markdown.outputs.markdown_table }}"}
