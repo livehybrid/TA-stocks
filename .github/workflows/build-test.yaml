@@ -22,6 +22,8 @@ jobs:
     name: quality-appinspect
     needs: package
     uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-cli.yml@main
+    with:
+      tags: "cloud,future,private_victoria"
 
 
   quality-appinspect-api:
@@ -29,6 +31,9 @@ jobs:
     needs:
       - appinspect
     uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-api.yml@main
+    with:
+      splunkbase-username: ${{ secrets.SPLUNKBASE_USERNAME }}
+      splunkbase-password: ${{ secrets.SPLUNKBASE_PASSWORD }}
   
   publish-gh:
     needs:
