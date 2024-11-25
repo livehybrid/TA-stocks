@@ -72,7 +72,7 @@ jobs:
           import json
 
           # Load the JSON file
-          with open("appinspect_result_${{ matrix.tags }}_checks.json", "r") as file:
+          with open("appinspect_result_${{ matrix.tags }}.json", "r") as file:
               data = json.load(file)
 
           # Extract checks and results
