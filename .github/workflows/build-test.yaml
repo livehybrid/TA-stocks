@@ -75,21 +75,39 @@ jobs:
           with open("appinspect_result_${{ matrix.tags }}.json", "r") as file:
               data = json.load(file)
       
-          # Extract checks and results
-          checks = []
-          for group in data.get("reports", {})[0].get("groups", []):
-              if isinstance(group, dict):  # Ensure group is a dictionary
-                  for check in group.get("checks", []):
-                      checks.append({"name": check.get("name", "N/A"), "result": check.get("result", "N/A")})
-      
-          # Generate Markdown table
-          markdown_table = "| Check Name | Result |\n|------------|--------|\n"
-          for check in checks:
-              markdown_table += f"| {check['name']} | {check['result']} |\n"
-      
-          # Write the Markdown to GITHUB_OUTPUT
-          with open("${GITHUB_OUTPUT}", "a") as output_file:
-              output_file.write(f"markdown_table={markdown_table}")
+              report = data.get("reports", [])[0] if isinstance(data.get("reports", []), list) and len(data.get("reports", [])) > 0 else {}
+    
+              # Define result categories, colors, and icons
+              categories = {
+                  "failure": ":red_circle:",
+                  "success": ":green_circle:",
+                  "manual_check": ":large_blue_circle:",
+                  "not_applicable": ":white_circle:",
+                  "warning": ":yellow_circle:",  # Handle warning
+              }
+              
+              # Add "warning" to the priority list
+              priority_order = ["failure", "warning", "success", "manual_check", "not_applicable"]
+              
+              # Sort checks by priority
+              checks = []
+              for group in report.get("groups", []):
+                  if isinstance(group, dict):  # Ensure group is a dictionary
+                      for check in group.get("checks", []):
+                          checks.append({"name": check.get("name", "N/A"), "result": check.get("result", "not_applicable")})
+              
+              sorted_checks = sorted(checks, key=lambda x: priority_order.index(x["result"]) if x["result"] in priority_order else len(priority_order))
+              
+              # Generate Markdown table with color-coded results
+              markdown_table = "| Check Name | Result |\n|------------|--------|\n"
+              for check in sorted_checks:
+                  result = check["result"]
+                  icon = categories.get(result, ":question:")  # Default icon for unknown results
+                  markdown_table += f"| {check['name']} | {icon} {result} |\n"
+              
+              # Write the Markdown table to GITHUB_OUTPUT
+              with open("${GITHUB_OUTPUT}", "a") as output_file:
+                  output_file.write(f"markdown_table={markdown_table}")
           EOF
       - uses: LouisBrunner/checks-action@v2.0.0
         if: always()
