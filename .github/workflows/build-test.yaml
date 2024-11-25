@@ -1,198 +1,55 @@
 name: Splunk App CI/CD
-
 on:
   push:
     branches:
       - "**"
     tags:
       - "v*.*.*"
-      
 permissions:
   pull-requests: write
   actions: write
   checks: write
 jobs:
-  package:
+  ci:
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      actions: write
+      checks: write
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
+      - name: Run Splunk App CI/CD
+        uses: livehybrid/splunk-app-cicd-action@main
         with:
           python-version: "3.9"
-          cache: "pip"
-          architecture: "x64"
-      - run: pip install -r requirements.txt
+          included-tags: "cloud,private_victoria,future"
+          splunkbase-username: ${{ secrets.SPLUNKBASE_USERNAME }}
+          splunkbase-password: ${{ secrets.SPLUNKBASE_PASSWORD }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate Addon
-        run: |
-          echo "Version is now calculated by ucc-gen"
-          ucc-gen build -o output -v
-          mv output/$(basename $(pwd)) output/app
-
-      - name: Generating package
-        run: |
-          set -x
-          rm -rf output/app/lib/3rdparty/**/*.pyc || true
-          rm -rf output/app/lib/__pycache__ || true
-          mkdir -p dist
-          ucc-gen package -o dist --path output/app
-          
-      - name: Upload package artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
-
-  appinspect:
-    name: quality-appinspect
-    needs: package
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        tags: ["cloud", "private_victoria", "future"]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
-      - name: scan
-        uses: splunk/appinspect-cli-action@v1.9
-        with:
-          app_path: dist/
-          included_tags: ${{ matrix.tags }}
-          result_file: appinspect_result_${{ matrix.tags }}.json
-      - name: Generate Markdown Table
-        if: always()
-        id: generate-markdown
-        run: |
-          echo "Starting JSON parsing..."
-          python3 - <<EOF
-          import json
-      
-          # Load the JSON file
-          with open("appinspect_result_${{ matrix.tags }}.json", "r") as file:
-              data = json.load(file)
-      
-              report = data.get("reports", [])[0] if isinstance(data.get("reports", []), list) and len(data.get("reports", [])) > 0 else {}
-    
-              # Define result categories, colors, and icons
-              categories = {
-                  "failure": ":red_circle:",
-                  "success": ":green_circle:",
-                  "manual_check": ":large_blue_circle:",
-                  "not_applicable": ":white_circle:",
-                  "warning": ":yellow_circle:",  # Handle warning
-              }
-              
-              # Add "warning" to the priority list
-              priority_order = ["failure", "warning", "success", "manual_check", "not_applicable"]
-              
-              # Sort checks by priority
-              checks = []
-              for group in report.get("groups", []):
-                  if isinstance(group, dict):  # Ensure group is a dictionary
-                      for check in group.get("checks", []):
-                          messages = [message.get("message", "") for message in check.get("messages", [])]
-                          checks.append(
-                              {
-                                  "name": check.get("name", "N/A"),
-                                  "result": check.get("result", "not_applicable"),
-                                  "messages": "<br>".join(messages),  # Join multiple messages with a semicolon
-                              }
-                          )
-              
-              sorted_checks = sorted(checks, key=lambda x: priority_order.index(x["result"]) if x["result"] in priority_order else len(priority_order))
-              
-              # Generate Markdown table with messages as a new column
-              markdown_table = "| Check Name | Result | Messages |\n|------------|--------|----------|\n"
-              for check in sorted_checks:
-                  result = check["result"]
-                  icon = categories.get(result, ":question:")  # Default icon for unknown results
-                  messages = check["messages"] if check["messages"] else "N/A"  # Show "N/A" if no messages
-                  markdown_table += f"| {check['name']} | {icon} {result} | {messages} |\n"
-
-              
-              # Write the Markdown table to GITHUB_OUTPUT
-              escaped_markdown_table = markdown_table.replace("\n", "%0A")
-              with open("markdown_output.txt", "w") as file:
-                  file.write(markdown_table)
-          EOF
-      - name: Write Markdown to GITHUB_OUTPUT
-        id: write-markdown
-        if: always()
-        run: |
-          markdown_table=$(<markdown_output.txt)
-          escaped_markdown=$(echo "$markdown_table" | sed -E ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\n/\\n/g')
-          echo "markdown_table=$escaped_markdown" >> $GITHUB_OUTPUT
-      - uses: LouisBrunner/checks-action@v2.0.0
-        if: always()
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          name: Test Results - CLI - (${{ matrix.tags }})
-          conclusion: ${{ job.status }}
-          output: |
-            {"summary":"${{ steps.write-markdown.outputs.markdown_table }}"}
-      - name: upload-appinspect-report
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: appinspect_${{ matrix.tags }}_checks.json
-          path: appinspect_result_${{ matrix.tags }}.json
-      - name: upload-markdown
-        if: matrix.tags == 'manual'
-        uses: actions/upload-artifact@v4
-        with:
-          name: check_markdown
-          path: |
-            *_markdown.txt
-            
-  appinspectapi:
-    name: quality-appinspect-api
-    needs: appinspect
-    if: ${{ !cancelled() && needs.package.result == 'success' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
   
-      - uses: splunk/appinspect-api-action@v3.0
-        name: "AppInspect API"
-        with:
-          username: ${{ secrets.SPLUNKBASE_USERNAME }}
-          password: ${{ secrets.SPLUNKBASE_PASSWORD }}
-          app_path: dist
-          included_tags: "private_victoria"
-          excluded_tags: "offensive"
-  
-      - name: Upload Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: AppInspect_response.html
-          path: AppInspect_response.html
+  #     - name: Upload Reports
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: AppInspect_response.html
+  #         path: AppInspect_response.html
 
-  publish-gh:
-    needs:
-      - appinspectapi
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    container: cimg/go:1.19
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
+  # publish-gh:
+  #   needs:
+  #     - appinspectapi
+  #   if: startsWith(github.ref, 'refs/tags/v')
+  #   runs-on: ubuntu-latest
+  #   container: cimg/go:1.19
+  #   permissions:
+  #     contents: write
+  #   steps:
+  #     - name: Checkout code
+  #       uses: actions/checkout@v3
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: .
-      - uses: ncipollo/release-action@v1
-        with:
-          artifacts: "dist/*"
-          allowUpdates: true
+  #     - name: Download artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         path: .
+  #     - uses: ncipollo/release-action@v1
+  #       with:
+  #         artifacts: "dist/*"
+  #         allowUpdates: true
