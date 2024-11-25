@@ -124,7 +124,7 @@ jobs:
           name: quality-appinspect (${{ matrix.tags }})
           conclusion: ${{ job.status }}
           output: |
-            {"summary":"${{ steps.write-markdown.outputs.markdown_table }}"}
+            {"summary":"```${{ steps.write-markdown.outputs.markdown_table }}```"}
       - name: upload-appinspect-report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
