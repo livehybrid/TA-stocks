@@ -54,13 +54,20 @@ jobs:
         with:
           name: dist
           path: dist/
-      - name: Scan
+      - name: scan
         uses: splunk/appinspect-cli-action@v1.9
         with:
           app_path: dist/
           included_tags: ${{ matrix.tags }}
           result_file: appinspect_result_${{ matrix.tags }}.json
-          
+      - uses: LouisBrunner/checks-action@v2.0.0
+        if: always()
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          name: Test XYZ
+          conclusion: ${{ job.status }}
+          output: |
+            {"summary":"${{ steps.scan.outputs.reporter }}"}
       - name: upload-appinspect-report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
