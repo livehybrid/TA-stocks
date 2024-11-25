@@ -114,9 +114,8 @@ jobs:
         id: write-markdown
         run: |
           markdown_table=$(<markdown_output.txt)
-          echo "markdown_table<<EOF" >> $GITHUB_OUTPUT
-          echo "$markdown_table" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          escaped_markdown=$(echo "$markdown_table" | sed -E ':a;N;$!ba;s/\\/\\\\/g;s/"/\\"/g;s/\n/\\n/g')
+          echo "markdown_table=$escaped_markdown" >> $GITHUB_OUTPUT
       - uses: LouisBrunner/checks-action@v2.0.0
         if: always()
         with:
