@@ -97,7 +97,7 @@ jobs:
           name: Test XYZ
           conclusion: ${{ job.status }}
           output: |
-            {"summary":"${{ join(steps.scan.outputs.*,'\n') }}"}
+            {"summary":"${{ steps.generate-markdown.outputs.markdown_table }}"}
       - name: upload-appinspect-report
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
