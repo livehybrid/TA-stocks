@@ -27,15 +27,14 @@ jobs:
     secrets:
       token: "${{ secrets.GITHUB_TOKEN }}"
 
-
-  # quality-appinspect-api:
-  #   name: quality-appinspect-api
-  #   needs:
-  #     - appinspect
-  #   uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-api.yml@main
-  #   with:
-  #     splunkbase-username: ${{ secrets.SPLUNKBASE_USERNAME }}
-  #     splunkbase-password: ${{ secrets.SPLUNKBASE_PASSWORD }}
+  quality-appinspect-api:
+    name: quality-appinspect-api
+    needs:
+      - appinspect
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-api.yml@main
+    with:
+      splunkbase-username: ${{ secrets.SPLUNKBASE_USERNAME }}
+      splunkbase-password: ${{ secrets.SPLUNKBASE_PASSWORD }}
   
   publish-gh:
     permissions:
