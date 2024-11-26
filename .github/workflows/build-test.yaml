@@ -38,6 +38,8 @@ jobs:
   #     splunkbase-password: ${{ secrets.SPLUNKBASE_PASSWORD }}
   
   publish-gh:
+    permissions:
+      contents: write
     needs:
       - appinspect
     uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main
