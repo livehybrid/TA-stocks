@@ -24,6 +24,7 @@ jobs:
     uses: livehybrid/deploy-splunk-app-action/.github/workflows/appinspect-cli.yml@main
     with:
       tags: "cloud,future,private_victoria"
+    secrets:
       token: "${{ secrets.GITHUB_TOKEN }}"
 
 
