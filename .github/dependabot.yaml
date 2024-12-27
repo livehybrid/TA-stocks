@@ -5,7 +5,6 @@ updates:
     directories: 
       - "/"
       - "/package/lib/"
-      - "/lib"
     schedule:
       interval: "daily"
     groups:
