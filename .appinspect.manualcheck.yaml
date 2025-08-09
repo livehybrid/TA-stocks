@@ -20,3 +20,5 @@ check_for_secret_disclosure:
     comment: 'Manual Check - Secret Disclosure'
 check_for_executable_flag:
     comment: 'Manual Check - Executable flag'
+check_for_iframe_in_javascript:
+    comment: 'Manual Check - check_for_iframe_in_javascript'
