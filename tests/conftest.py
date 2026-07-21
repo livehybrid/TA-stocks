@@ -30,6 +30,13 @@ MGMT = os.environ.get("SPLUNK_MGMT_URL", "https://127.0.0.1:8089").rstrip("/")
 USER = os.environ.get("SPLUNK_USER", "admin")
 PW = os.environ.get("SPLUNK_PASSWORD", "Changeme1!")
 CONTAINER = os.environ.get("SPLUNK_CONTAINER", "ta_stocks_splunk")
+# `docker exec` defaults to the image's build-time USER, which is not the account
+# splunkd runs modular inputs as. Running `splunk cmd python <script> --scheme`
+# as a non-owner of $SPLUNK_HOME/var/log makes splunk.mining.dcutils fail at
+# import (PermissionError opening python.log), so the scheme never emits. splunkd
+# runs the real inputs as `splunk`, so exec as that user to mirror production and
+# land on the log owner. Override via SPLUNK_RUN_USER if an image differs.
+RUN_USER = os.environ.get("SPLUNK_RUN_USER", "splunk")
 APP = "TA-stocks"
 
 # Modular-input kinds this add-on ships. splunkd opens the management port (so
@@ -99,8 +106,14 @@ class Splunk:
 
 
 def docker_exec(*cmd, timeout=180):
-    """Run a command inside the Splunk container. Returns (rc, stdout, stderr)."""
-    full = ["docker", "exec", CONTAINER, *cmd]
+    """Run a command inside the Splunk container as the splunk runtime user.
+
+    Returns (rc, stdout, stderr). The `-u` is required: without it `docker exec`
+    uses the image's build-time USER, which cannot write $SPLUNK_HOME/var/log and
+    so trips a PermissionError inside splunk.mining.dcutils before any script code
+    runs. splunkd runs modular inputs as `splunk`, so this matches production.
+    """
+    full = ["docker", "exec", "-u", RUN_USER, CONTAINER, *cmd]
     p = subprocess.run(full, capture_output=True, text=True, timeout=timeout)
     return p.returncode, p.stdout, p.stderr
 
