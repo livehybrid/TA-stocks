@@ -811,6 +811,9 @@
         "version": "1.0.3",
         "displayName": "Stock Market data collector",
         "schemaVersion": "0.0.9",
+        "supportedPythonVersion": [
+            "3.9"
+        ],
         "supportedThemes": [
             "light",
             "dark"
