@@ -812,7 +812,7 @@
         "displayName": "Stock Market data collector",
         "schemaVersion": "0.0.9",
         "supportedPythonVersion": [
-            "3.9"
+            "3.13"
         ],
         "supportedThemes": [
             "light",
