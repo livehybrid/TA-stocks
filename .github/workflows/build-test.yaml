@@ -19,10 +19,138 @@ jobs:
   package:
     runs-on: ubuntu-latest
     steps:
-      - name: Package app
-        uses: livehybrid/deploy-splunk-app-action@main
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
         with:
+          # Build on 3.9: Splunk 10.1 and lower run the add-on on 3.9, and
+          # ucc-gen vendors whatever pip resolves for THIS interpreter.
           python-version: "3.9"
+
+      - name: Determine version
+        id: version
+        shell: bash
+        run: |
+          SHORT_COMMIT_HASH=$(git rev-parse --short HEAD)
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            TAG_VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            TAG_VERSION="1.0.0"
+          fi
+          if ! [[ "$TAG_VERSION" =~ ^([0-9]+)\.([0-9]|[1-9][0-9])\.([0-9]|[1-9][0-9])$ ]]; then
+            echo "::error::version $TAG_VERSION does not fit the MAJ*10000+MIN*100+PATCH build scheme"; exit 1
+          fi
+          BUILD=$(( BASH_REMATCH[1] * 10000 + BASH_REMATCH[2] * 100 + BASH_REMATCH[3] ))
+          echo "VERSION_WITH_HASH=${TAG_VERSION}+${SHORT_COMMIT_HASH}" >> $GITHUB_OUTPUT
+          echo "TAG_VERSION=${TAG_VERSION}" >> $GITHUB_OUTPUT
+          echo "BUILD=${BUILD}" >> $GITHUB_OUTPUT
+
+      - name: Install UCC framework
+        run: pip install "splunk-add-on-ucc-framework>=6.6.0"
+
+      - name: Build add-on (ucc-gen)
+        shell: bash
+        run: |
+          ucc-gen build --source package --ta-version "${{ steps.version.outputs.VERSION_WITH_HASH }}"
+          mkdir -p stage
+          cp -r output/TA-stocks stage/TA-stocks
+          # ucc-gen stamps a timestamp build; derive it from the version instead,
+          # so every release changes it predictably (app.conf.spec requires that).
+          sed -i -E '/^\[install\]/,/^\[/ s/^build = .*/build = ${{ steps.version.outputs.BUILD }}/' stage/TA-stocks/default/app.conf
+          # Normalise permissions: AppInspect rejects 775/664. App dirs 755, files 644.
+          find stage/TA-stocks -type d -exec chmod 755 {} +
+          find stage/TA-stocks -type f -exec chmod 644 {} +
+
+      - name: Vendored libraries support Python 3.9
+        shell: bash
+        run: |
+          pip install --quiet packaging
+          python3 - stage/TA-stocks/lib <<'PY'
+          import email, pathlib, sys
+          from packaging.specifiers import SpecifierSet
+          RUNTIME = "3.9"
+          lib = pathlib.Path(sys.argv[1])
+          metas = sorted(lib.glob("*.dist-info/METADATA"))
+          if not metas:
+              sys.exit(f"no *.dist-info/METADATA under {lib}: cannot check vendored libraries")
+          bad = []
+          for meta in metas:
+              m = email.message_from_string(meta.read_text(errors="replace"))
+              rp = m.get("Requires-Python")
+              if rp and not SpecifierSet(rp).contains(RUNTIME, prereleases=True):
+                  bad.append(f"{m['Name']} {m['Version']} (Requires-Python {rp})")
+          print(f"checked {len(metas)} vendored distributions against Python {RUNTIME}")
+          if bad:
+              sys.exit("vendored libraries that do not support Python " + RUNTIME + ":\n  " + "\n  ".join(bad))
+          PY
+
+      - name: Bundled certifi does not trust the compromised eMudhra root
+        shell: bash
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/livehybrid/deploy-splunk-app-action/main/scripts/check_bundled_certifi.py \
+            | python3 - stage/TA-stocks
+
+      - name: Generate package tarball
+        shell: bash
+        run: |
+          mkdir -p dist
+          cd stage
+          tar -czf ../dist/TA-stocks-${{ steps.version.outputs.VERSION_WITH_HASH }}.tar.gz TA-stocks/
+          cd ..
+          ls -la dist/
+
+      - name: Verify package metadata
+        # Reads the tarball itself; the expected version and build come from the
+        # ref and git, independently of the version step.
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then V="${GITHUB_REF#refs/tags/v}"; else V="1.0.0"; fi
+          export WANT_VERSION="${V}+$(git rev-parse --short HEAD)"
+          python3 - dist/*.tar.gz <<'PY'
+          import configparser, json, os, sys, tarfile
+          want = os.environ["WANT_VERSION"]
+          major, minor, patch = (int(x) for x in want.split("+")[0].split("."))
+          want_build = str(major * 10000 + minor * 100 + patch)
+          path = sys.argv[1]
+          def conf(raw):
+              c = configparser.ConfigParser(interpolation=None, strict=False)
+              c.read_string(raw)
+              return c
+          with tarfile.open(path) as tar:
+              read = lambda n: tar.extractfile("TA-stocks/" + n).read().decode()
+              app = conf(read("default/app.conf"))
+              manifest = json.loads(read("app.manifest"))
+              python_confs = {n: conf(read("default/" + n)) for n in ("inputs.conf", "restmap.conf")}
+          got = {"launcher.version": app.get("launcher", "version", fallback=None),
+                 "id.version": app.get("id", "version", fallback=None),
+                 "app.manifest": manifest["info"]["id"]["version"]}
+          build = app.get("install", "build", fallback=None)
+          print(got, "build", build)
+          bad = [f"{k}={v}" for k, v in got.items() if v != want]
+          if build != want_build:
+              bad.append(f"install.build={build} (want {want_build})")
+          if os.path.basename(path) != f"TA-stocks-{want}.tar.gz":
+              bad.append(f"tarball name {os.path.basename(path)}")
+          # Every input and REST handler must carry the dual-runtime pair.
+          for name, c in python_confs.items():
+              for s in c.sections():
+                  if name == "restmap.conf" and c.get(s, "handlertype", fallback="") != "python":
+                      continue
+                  if "://" in s:
+                      continue
+                  if c.get(s, "python.required", fallback=None) != "3.13" or c.get(s, "python.version", fallback=None) != "python3":
+                      bad.append(f"{name} [{s}] lacks python.required = 3.13 / python.version = python3")
+          if bad:
+              sys.exit(f"package metadata is wrong for {want}:\n  " + "\n  ".join(bad))
+          PY
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
 
   integration-test:
     name: integration-test (splunk-docker)
@@ -39,15 +167,17 @@ jobs:
         splunk: ["10.0", "10.6.0"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
-          python-version: "3.11"
+          # Same interpreter as the package job, so the libraries under test are
+          # the ones the artefact vendors.
+          python-version: "3.9"
 
       - name: Install UCC framework + pytest
-        run: pip install --upgrade splunk-add-on-ucc-framework pytest
+        run: pip install "splunk-add-on-ucc-framework>=6.6.0" pytest
 
       - name: Build add-on into stage/
         shell: bash
@@ -72,7 +202,24 @@ jobs:
           SPLUNK_USER: admin
           SPLUNK_PASSWORD: Changeme1!
           SPLUNK_CONTAINER: ta_stocks_splunk
+          # Keyed collectors: their live tests skip while these are unset.
+          # Alpha Vantage falls back to its public `demo` key (IBM only).
+          ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
+          TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
         run: pytest tests/ -v -ra
+
+      - name: Inputs ran on the expected Python
+        # 10.2+ must honour python.required = 3.13; 10.0 ignores it and runs 3.9.
+        # Read from splunkd's own exec log, not from anything the add-on reports.
+        env:
+          WANT_313: ${{ matrix.splunk != '10.0' }}
+        run: |
+          lines=$(docker exec -u splunk ta_stocks_splunk grep -h "ExecProcessor.*exec process: " /opt/splunk/var/log/splunk/splunkd.log | grep "/etc/apps/TA-stocks/bin/" || true)
+          printf '%s\n' "$lines" | tail -n 20
+          [ -n "$lines" ] || { echo "::error::no ExecProcessor lines for TA-stocks"; exit 1; }
+          if [ "$WANT_313" = true ]; then
+            if printf '%s\n' "$lines" | grep -v -q "python3\.13"; then echo "::error::an input did not run on python3.13"; exit 1; fi
+          elif printf '%s\n' "$lines" | grep -q "python3\.13"; then echo "::error::an input ran on python3.13 on Splunk 10.0"; exit 1; fi
 
       - name: Splunk logs on failure
         if: failure()
@@ -103,7 +250,7 @@ jobs:
     secrets:
       splunkbase_username: ${{ secrets.SPLUNKBASE_USERNAME }}
       splunkbase_password: ${{ secrets.SPLUNKBASE_PASSWORD }}
-  
+
   publish-gh:
     permissions:
       contents: write
@@ -111,3 +258,21 @@ jobs:
       - appinspect
       - integration-test
     uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish.yml@main
+
+  publish-splunkbase:
+    # Tag runs only: needs the GitHub release (every CLI gate + integration
+    # tests) and Splunk's hosted AppInspect. Uploads stay off unless the repo
+    # variable SPLUNKBASE_PUBLISH_ENABLED=true. Versions claimed: 10.0 and 10.6
+    # are tested in CI, the releases between share their runtimes.
+    needs:
+      - publish-gh
+      - quality-appinspect-api
+    permissions:
+      contents: read
+    uses: livehybrid/deploy-splunk-app-action/.github/workflows/publish-splunkbase.yml@main
+    with:
+      app_id: "7706"
+      splunk_versions: "10.6,10.5,10.4,10.3,10.2,10.1,10.0"
+    secrets:
+      splunkbase_username: ${{ secrets.SPLUNKBASE_USERNAME }}
+      splunkbase_password: ${{ secrets.SPLUNKBASE_PASSWORD }}

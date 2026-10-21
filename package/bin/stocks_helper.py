@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 
 import import_declare_test
 from solnlib import conf_manager, log
@@ -86,6 +87,11 @@ def parse_alphavantage_global_resp(resp, logger: logging.Logger):
     return [ts_obj]
 
 
+def redact_url(url: str) -> str:
+    """The URL with any apikey/token query value masked, safe to log."""
+    return re.sub(r"(?i)\b(apikey|token)=[^&]*", r"\1=********", url)
+
+
 def get_input_url(input_type: str, ticker: str, api_key: str):
     options = {
         "alphavantage_daily": f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}",  # &outputsize=full
@@ -134,8 +140,7 @@ def get_data_from_api(logger: logging.Logger, input_name: str, input_item: dict,
     # https://api.tiingo.com/tiingo/daily/csco/prices
 
     # https://www.alphavantage.co/documentation/#daily
-    tickets = "AAPL,CSCO,VWRL.LON"
-    logger.info(url)
+    logger.info(redact_url(url))
     requestResponse = requests.get(url, headers=headers)
     json_resp = requestResponse.json()
     #    logger.info(json_resp)
