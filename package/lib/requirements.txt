@@ -16,7 +16,7 @@
 # whatever bundle it was built with. CI checks the built package for it.
 # Matches the set proven green on TA-nextdns-api / TA-unifi-cloud / TA-airspace-watch.
 #
-requests>=2.32.0,<2.33.0
+requests>=2.32.5,<2.33.0
 splunk-sdk>=2.0.2,<3.0.0
 splunktaucclib>=8.2.0
 solnlib>=5.5.0
