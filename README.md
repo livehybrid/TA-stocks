@@ -19,7 +19,7 @@ duplicating events.
 
 | Attribute | Value |
 |-----------|-------|
-| **Add-on version** | 1.0.3 |
+| **Add-on version** | 1.0.x |
 | **Tested against** | Splunk Enterprise 10.0 (Python 3.9) and 10.6 (Python 3.13), real Splunk in Docker, on every CI run |
 | **Python runtime** | 3.13 on Splunk 10.2 and later, 3.9 on Splunk 10.1 and earlier |
 | **Expected compatible** | Splunk Enterprise and Cloud 9.3+ and 10.x |
@@ -42,8 +42,20 @@ input scheme exposes its expected arguments and the keyless **Vanguard GraphQL**
 input actually indexes events. The same suite runs on every push via GitHub
 Actions.
 
-> **Coverage gap:** the five keyed collectors (AlphaVantage and the four Tiingo
-> inputs) are currently scheme- and registration-tested only, not exercised
-> against their live APIs, because CI holds no provider API keys. A broken keyed
+The keyed collectors have live tests too (`tests/test_live_keyed.py`): each
+stores an account through the add-on's REST handler, creates the input and
+asserts events are indexed, and checks the key never reaches a log file.
+Keys come from `ALPHAVANTAGE_API_KEY` and `TIINGO_API_KEY` (repo secrets in CI).
+
+> **Coverage gap:** CI holds no provider keys. Alpha Vantage then runs on its
+> public `demo` key (IBM only) and skips if Alpha Vantage refuses the runner;
+> the four Tiingo tests skip with `TIINGO_API_KEY not set`. A broken Tiingo
 > collector would still pass CI. Tracked in
 > [deploy-splunk-app-action#22](https://github.com/livehybrid/deploy-splunk-app-action/issues/22).
+
+## Versioning
+
+Release builds stamp `<tag>+<short sha>` (for example `1.0.6+abc1234`) into
+`app.conf` and `app.manifest`, and set `[install] build` to
+`MAJOR*10000 + MINOR*100 + PATCH` (1.0.6 is 10006). CI re-reads both from the
+packaged tarball and fails the build if either is wrong.

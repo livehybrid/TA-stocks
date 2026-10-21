@@ -1,3 +1,23 @@
-splunktaucclib
-splunk-sdk
-solnlib
+#
+# Runtime dependencies vendored into package/lib/ by ucc-gen at build time so the
+# modular inputs can import them inside Splunk's bundled Python.
+#
+# stocks_helper imports `requests` at module top, so scheme introspection loads
+# it under Splunk 10's 3.9 runtime. Until 1.0.6 it was not listed here and the
+# add-on ran on whatever requests Splunk's own Python happened to ship. requests
+# is capped < 2.33.0 because 2.33.0+ sets Requires-Python >= 3.10 and 2.34.0
+# annotates _internal_utils with runtime `str | bytes` unions, which raise
+# TypeError at import on 3.9 and make every collector fail to register.
+# splunk-sdk is capped < 3.0.0 (3.0.0 is Python >= 3.13 only). splunktaucclib
+# >= 8.2.0 is required by the current ucc-gen (>= 6.5.2). CI refuses a package
+# whose vendored libraries do not support Python 3.9.
+# certifi >= 2026.10.19 drops "emSign ECC Root CA - G3" after the eMudhra
+# intermediate CA key compromise; requests vendors certifi, and the add-on keeps
+# whatever bundle it was built with. CI checks the built package for it.
+# Matches the set proven green on TA-nextdns-api / TA-unifi-cloud / TA-airspace-watch.
+#
+requests>=2.32.0,<2.33.0
+splunk-sdk>=2.0.2,<3.0.0
+splunktaucclib>=8.2.0
+solnlib>=5.5.0
+certifi>=2026.10.19
