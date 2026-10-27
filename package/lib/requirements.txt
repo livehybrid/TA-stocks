@@ -11,7 +11,7 @@
 # splunk-sdk is capped < 3.0.0 (3.0.0 is Python >= 3.13 only). splunktaucclib
 # >= 8.2.0 is required by the current ucc-gen (>= 6.5.2). CI refuses a package
 # whose vendored libraries do not support Python 3.9.
-# certifi >= 2026.10.19 drops "emSign ECC Root CA - G3" after the eMudhra
+# certifi >= 2026.10.23 drops "emSign ECC Root CA - G3" after the eMudhra
 # intermediate CA key compromise; requests vendors certifi, and the add-on keeps
 # whatever bundle it was built with. CI checks the built package for it.
 # Matches the set proven green on TA-nextdns-api / TA-unifi-cloud / TA-airspace-watch.
