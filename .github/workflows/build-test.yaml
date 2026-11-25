@@ -196,6 +196,11 @@ jobs:
           ucc-gen build --source package --ta-version 1.0.3
           rm -rf stage && mkdir -p stage
           cp -r output/TA-stocks stage/TA-stocks
+          # Point the Tiingo inputs at the mock upstream (docker/mock). splunkd
+          # does not pass container env vars to modular inputs, so the add-on
+          # reads this app-local file. The live job builds without it.
+          mkdir -p stage/TA-stocks/local
+          echo "http://mock:8080" > stage/TA-stocks/local/tiingo_api_base
           # The test container's splunk user (a different uid) must read the app
           # and write local/inputs.conf + checkpoints into the bind mount. Wide
           # perms are fine on this throwaway copy — it is never the artefact.
@@ -213,11 +218,12 @@ jobs:
           SPLUNK_USER: admin
           SPLUNK_PASSWORD: Changeme1!
           SPLUNK_CONTAINER: ta_stocks_splunk
-          # Keyed collectors: their live tests skip while these are unset.
-          # Alpha Vantage falls back to its public `demo` key (IBM only).
+          # Alpha Vantage falls back to its public `demo` key (IBM only). Tiingo
+          # runs against the mock here; the real API only in live-tiingo.
           ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}
-          TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
-        run: pytest tests/ -v -ra
+          TIINGO_MOCK: "1"
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: pytest tests --ignore=tests/live --ignore=tests/unit -v -ra -p no:cacheprovider
 
       - name: Inputs ran on the expected Python
         # 10.2+ must honour python.required = 3.13; 10.0 ignores it and runs 3.9.
@@ -243,6 +249,87 @@ jobs:
         if: always()
         working-directory: docker
         run: docker compose down -v || true
+
+  unit:
+    name: unit (python ${{ matrix.python }})
+    # ubuntu-24.04: ubuntu-latest (26.04) has no Python 3.9.
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install "requests>=2.32.5,<2.33.0" "pytest>=8"
+      - run: pytest tests/unit -v -p no:cacheprovider
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+
+  live-tiingo:
+    name: live-tiingo (real Tiingo API)
+    # Every Tiingo input against the real api.tiingo.com in real Splunk. Only
+    # on pushes to main, the weekly schedule and manual runs: never for pull
+    # requests, never for Dependabot. Not a release gate. Small on purpose for
+    # the free tier (about 17 requests a run); a 429 fails the job with
+    # "TIINGO RATE LIMITED" in the test output.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      (github.event_name == 'schedule' ||
+       github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && github.ref == 'refs/heads/main'))
+    needs: package
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.9"
+
+      - name: Install UCC framework + pytest
+        run: pip install "splunk-add-on-ucc-framework>=6.6.0" pytest >/dev/null
+
+      - name: Build add-on into stage/ (no mock override -> real API)
+        shell: bash
+        run: |
+          ucc-gen build --source package --ta-version 1.0.3 >/dev/null
+          rm -rf stage && mkdir -p stage
+          cp -r output/TA-stocks stage/TA-stocks
+          test ! -e stage/TA-stocks/local/tiingo_api_base
+          chmod -R 777 stage/TA-stocks
+
+      - name: Start Splunk 10.6.0
+        working-directory: docker
+        env:
+          SPLUNK_IMAGE_TAG: "10.6.0"
+        run: docker compose up -d --wait --wait-timeout 360 >/dev/null 2>&1
+
+      - name: Live Tiingo suite
+        env:
+          SPLUNK_MGMT_URL: https://127.0.0.1:8089
+          SPLUNK_USER: admin
+          SPLUNK_PASSWORD: Changeme1!
+          SPLUNK_CONTAINER: ta_stocks_splunk
+          TIINGO_API_KEY: ${{ secrets.TIINGO_API_KEY }}
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: pytest tests/live -v -rA -s -p no:cacheprovider -p no:warnings
+
+      - name: Inputs ran on python3.13
+        run: |
+          lines=$(docker exec -u splunk ta_stocks_splunk grep -h "ExecProcessor.*exec process: " /opt/splunk/var/log/splunk/splunkd.log | grep "/etc/apps/TA-stocks/bin/tiingo" || true)
+          [ -n "$lines" ] || { echo "::error::no ExecProcessor lines for the Tiingo inputs"; exit 1; }
+          if printf '%s\n' "$lines" | grep -v -q "python3\.13"; then echo "::error::a Tiingo input did not run on python3.13"; exit 1; fi
+          echo "Tiingo inputs ran on python3.13 ($(printf '%s\n' "$lines" | wc -l) launches)"
+
+      - name: Tear down
+        if: always()
+        working-directory: docker
+        run: docker compose down -v >/dev/null 2>&1 || true
 
   appinspect:
     name: quality-appinspect

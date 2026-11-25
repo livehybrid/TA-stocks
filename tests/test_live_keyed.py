@@ -1,5 +1,9 @@
 """
-Live tests for the keyed collectors (Alpha Vantage and the four Tiingo inputs).
+Live test for the Alpha Vantage collector.
+
+The four Tiingo inputs are covered by tests/test_mock_tiingo_e2e.py (mock
+upstream, every push) and tests/live/test_live_tiingo.py (the real API, live
+job only).
 
 They run the real path a user takes: store an account through the add-on's own
 REST handler (the Configuration page does the same), create the input through
@@ -10,7 +14,6 @@ Keys come from the environment and nothing else:
   ALPHAVANTAGE_API_KEY  unset -> Alpha Vantage's public `demo` key, which only
                         serves IBM. Its rate limit is shared, so if a direct
                         probe from this runner is refused the test SKIPS.
-  TIINGO_API_KEY        unset -> every Tiingo test SKIPS with that reason.
 
 Each test also checks the key never reaches any log under var/log/splunk
 (read straight from disk in the container, not through anything the add-on
@@ -35,15 +38,6 @@ POLL_INTERVAL = 10
 
 AV_KEY = os.environ.get("ALPHAVANTAGE_API_KEY") or "demo"
 AV_TICKER = "IBM" if AV_KEY == "demo" else os.environ.get("ALPHAVANTAGE_TICKER", "IBM")
-TIINGO_KEY = os.environ.get("TIINGO_API_KEY", "")
-
-# input kind -> (tickers, a field every event of that kind carries)
-TIINGO_INPUTS = {
-    "tiingo_iex_current": ("aapl", "ticker"),
-    "tiingo_stock_endofday": ("aapl", "close"),
-    "tiingo_crypto_endofday": ("btcusd", "baseCurrency"),
-    "tiingo_fx_current": ("eurusd", "ticker"),
-}
 
 
 def _post(splunk, path, data):
@@ -122,16 +116,3 @@ def test_alphavantage_daily_indexes_quote(splunk, keyed_input):
     assert row.get("price"), f"quote row has no price: {row}"
     leaked = _key_in_logs(f"apikey={AV_KEY}")
     assert not leaked, f"Alpha Vantage key written to {leaked}"
-
-
-@pytest.mark.parametrize("kind", TIINGO_INPUTS)
-def test_tiingo_input_indexes_events(splunk, keyed_input, kind):
-    if not TIINGO_KEY:
-        pytest.skip("TIINGO_API_KEY not set: Tiingo collectors are not exercised live")
-    tickers, field = TIINGO_INPUTS[kind]
-    keyed_input(kind, f"tiingo_{kind}", TIINGO_KEY, "tickers", tickers)
-    rows = _events(splunk, kind)
-    assert rows, f"no {kind} events indexed within {POLL_SECONDS}s"
-    assert any(field in r for r in rows), f"{kind} events lack '{field}': {sorted(rows[0])}"
-    leaked = _key_in_logs(TIINGO_KEY)
-    assert not leaked, f"Tiingo key written to {leaked}"

@@ -8,6 +8,12 @@ services:
       SPLUNK_GENERAL_TERMS: --accept-sgt-current-at-splunk-com
       SPLUNK_PASSWORD: ${SPLUNK_PASSWORD:-Changeme1!}
       SPLUNK_HEC_TOKEN: ""
+      # Not UTC, and not a whole hour off it: a timestamp parsed in local time
+      # instead of UTC shows up as a wrong _time in the tests.
+      TZ: Asia/Kolkata
+    depends_on:
+      mock:
+        condition: service_healthy
     ports:
       # Fixed ports so the test suite can hit https://127.0.0.1:8089 directly.
       # On a CI runner nothing else contends for these.
@@ -24,3 +30,16 @@ services:
       timeout: 5s
       retries: 40
       start_period: 30s
+
+  mock:
+    # Synthetic stand-in for api.tiingo.com (no real key or data). The add-on
+    # only uses it when the build writes local/tiingo_api_base (mock CI legs);
+    # the live job builds without that file and talks to the real API.
+    build: ./mock
+    container_name: ta_stocks_mock
+    hostname: mock
+    expose:
+      - "8080"
+    ports:
+      # The tests read /__mock/requests from the runner.
+      - "127.0.0.1:8081:8080"
