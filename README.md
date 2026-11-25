@@ -80,7 +80,10 @@ Errors are logged as `run failed kind=<input> status=<n> detail="..."`
 the `Authorization` header. A 429 is not retried; 5xx and network errors are
 retried three times. Tiingo's free tier allows about 50 requests an hour and
 1,000 a day: each run is one request per input (plus one per ticker after a
-stop), so four inputs at the default 300 s interval make 48 an hour.
+stop). The end-of-day stock input defaults to 3,600 s (a daily price does not
+change more often) and the other three Tiingo inputs to 300 s, so the defaults
+make 37 requests an hour and 888 a day, inside the free tier. Four inputs at
+300 s would make 1,152 a day and hit the daily limit.
 
 ## Versioning
 
