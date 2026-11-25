@@ -8,6 +8,8 @@ from splunklib import modularinput as smi
 import requests
 from typing import Callable
 
+import tiingo_client as tiingo
+
 
 ADDON_NAME = "TA-stocks"
 
@@ -24,22 +26,6 @@ def get_account_api_key(session_key: str, account_name: str):
     )
     account_conf_file = cfm.get_conf("ta-stocks_account")
     return account_conf_file.get(account_name).get("api_key")
-
-
-def parse_tiingocrypto_resp(resp, logger: logging):
-    ts_array = []
-    for ticker in resp:
-        for data in ticker["priceData"]:
-            ts_obj = data
-            ts_obj["baseCurrency"] = ticker["baseCurrency"]
-            ts_obj["quoteCurrency"] = ticker["quoteCurrency"]
-            ts_obj["ticker"] = ticker["ticker"]
-            ts_array.append(ts_obj)
-    return ts_array
-
-
-def parse_tiingo_resp(resp, logger: logging):
-    return resp
 
 
 def parse_alphavantage_ts_resp(resp, logger: logging.Logger):
@@ -93,13 +79,9 @@ def redact_url(url: str) -> str:
 
 
 def get_input_url(input_type: str, ticker: str, api_key: str):
+    # Tiingo inputs go through tiingo_client (key in a header, never in a URL).
     options = {
         "alphavantage_daily": f"https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={ticker}&apikey={api_key}",  # &outputsize=full
-        "tiingo_iex_current": f"https://api.tiingo.com/iex/?tickers={ticker}",
-        "tiingo_fx_current": f"https://api.tiingo.com/tiingo/fx/top?resampleFreq=5min&tickers={ticker}&token={api_key}",
-        "tiingo_crypto_endofday": f"https://api.tiingo.com/tiingo/crypto/prices?resampleFreq=1hour&tickers={ticker}&token={api_key}",
-        "tiingo_stock_endofday": f"https://api.tiingo.com/tiingo/daily/prices?&tickers={ticker}&token={api_key}",
-        # https://api.tiingo.com/tiingo/crypto/prices?resampleFreq=1hour&tickers=
     }
     return options.get(input_type)
 
@@ -107,10 +89,6 @@ def get_input_url(input_type: str, ticker: str, api_key: str):
 def get_input_headers(input_type: str, api_key: str):
     options = {
         "alphavantage_daily": {"Content-Type": "application/json"},
-        "tiingo_iex_current": {"Content-Type": "application/json", "Authorization": f"Token {api_key}"},
-        "tiingo_fx_current": {"Content-Type": "application/json", "Authorization": f"Token {api_key}"},
-        "tiingo_crypto_endofday": {"Content-Type": "application/json", "Authorization": f"Token {api_key}"},
-        "tiingo_stock_endofday": {"Content-Type": "application/json", "Authorization": f"Token {api_key}"},
     }
     return options.get(input_type)
 
@@ -118,10 +96,6 @@ def get_input_headers(input_type: str, api_key: str):
 def get_input_parser(input_type: str, logger: logging.Logger, response: dict):
     options = {
         "alphavantage_daily": "parse_alphavantage_global_resp",
-        "tiingo_iex_current": "parse_tiingo_resp",
-        "tiingo_fx_current": "parse_tiingo_resp",
-        "tiingo_crypto_endofday": "parse_tiingocrypto_resp",
-        "tiingo_stock_endofday": "parse_tiingo_resp",
     }
     parserFuncName = options.get(input_type)
     parserFunc: Callable[dict, logging.logger] = globals()[parserFuncName]
@@ -295,6 +269,42 @@ def get_vanguard_graphql(logger: logging.Logger, input_name: str, input_item: di
         raise Exception(f"Query failed with status code {response.status_code}: {response.text}")
 
 
+def run_tiingo(inputs, event_writer, input_name, input_item, logger, api_key):
+    """One run of a Tiingo input: fetch, keep what is newer than the checkpoint,
+    write it, then move the checkpoint. Logs counts and status only."""
+    kind, stanza = input_name.split("://", 1)
+    tickers = tiingo.split_tickers(input_item.get("tickers"))
+    if not tickers:
+        raise ValueError("input has no tickers")
+    checkpoint = tiingo.FileCheckpoint(inputs.metadata.get("checkpoint_dir", "."), kind, stanza)
+    state = checkpoint.load()
+    client = tiingo.Client(api_key)
+    try:
+        events, new_state = tiingo.COLLECTORS[kind](client, tickers, state)
+    except tiingo.TiingoRateLimited as exc:
+        logger.error(f"run failed kind={kind} rate_limited=1 status={exc.status} requests={client.requests_made} detail={json.dumps(exc.detail)}")
+        return
+    except tiingo.TiingoError as exc:
+        logger.error(f"run failed kind={kind} status={exc.status if exc.status is not None else '-'} requests={client.requests_made} detail={json.dumps(exc.detail)}")
+        return
+    for epoch, body in events:
+        event_writer.write_event(
+            smi.Event(
+                data=json.dumps(body, ensure_ascii=False, default=str),
+                time="%.6f" % epoch,
+                index=input_item.get("index"),
+                sourcetype=kind,
+            )
+        )
+    checkpoint.save(new_state)
+    missing = [t for t in tickers if t not in new_state]
+    if missing:
+        logger.warning(f"no data for {len(missing)} of {len(tickers)} tickers kind={kind} tickers={','.join(missing)}")
+    logger.info(
+        f"run complete kind={kind} events={len(events)} requests={client.requests_made} tickers={len(tickers)}"
+    )
+
+
 def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
     # inputs.inputs is a Python dictionary object like:
     # {
@@ -312,17 +322,25 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
         logger = logger_for_input(normalized_input_name)
         try:
             session_key = inputs.metadata["session_key"]
-            log_level = conf_manager.get_log_level(
-                logger=logger,
-                session_key=session_key,
-                app_name=ADDON_NAME,
-                conf_name="ta-stocks_settings",
-            )
-            logger.setLevel(log_level)
+            try:
+                log_level = conf_manager.get_log_level(
+                    logger=logger,
+                    session_key=session_key,
+                    app_name=ADDON_NAME,
+                    conf_name="ta-stocks_settings",
+                )
+                logger.setLevel(log_level)
+            except Exception:  # settings never saved: keep the default level
+                logger.setLevel(logging.INFO)
             log.modular_input_start(logger, normalized_input_name)
 
+            api_key = None
             if input_item.get("account"):
                 api_key = get_account_api_key(session_key, input_item.get("account"))
+            if input_name.split("://")[0] in tiingo.COLLECTORS:
+                run_tiingo(inputs, event_writer, input_name, input_item, logger, api_key)
+                log.modular_input_end(logger, normalized_input_name)
+                continue
             if "vanguard" in input_name:
                 data = get_vanguard_graphql(logger, input_name, input_item)
             else:
@@ -347,4 +365,8 @@ def stream_events(inputs: smi.InputDefinition, event_writer: smi.EventWriter):
             )
             log.modular_input_end(logger, normalized_input_name)
         except Exception as e:
-            log.log_exception(logger, e, "my custom error type", msg_before="Exception raised while ingesting data for demo_input: ")
+            # Type only for the Tiingo inputs: an exception message can quote a URL.
+            if input_name.split("://")[0] in tiingo.COLLECTORS:
+                logger.error(f"run failed kind={input_name.split('://')[0]} error={type(e).__name__}")
+            else:
+                log.log_exception(logger, e, "my custom error type", msg_before="Exception raised while ingesting data for demo_input: ")
