@@ -481,7 +481,7 @@
                             ],
                             "help": "Time interval of the data input, in seconds.",
                             "required": true,
-                            "defaultValue": "300"
+                            "defaultValue": "3600"
                         },
                         {
                             "type": "singleSelect",
