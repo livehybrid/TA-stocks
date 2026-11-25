@@ -42,16 +42,45 @@ input scheme exposes its expected arguments and the keyless **Vanguard GraphQL**
 input actually indexes events. The same suite runs on every push via GitHub
 Actions.
 
-The keyed collectors have live tests too (`tests/test_live_keyed.py`): each
-stores an account through the add-on's REST handler, creates the input and
-asserts events are indexed, and checks the key never reaches a log file.
-Keys come from `ALPHAVANTAGE_API_KEY` and `TIINGO_API_KEY` (repo secrets in CI).
+The Tiingo inputs are tested three ways:
 
-> **Coverage gap:** CI holds no provider keys. Alpha Vantage then runs on its
-> public `demo` key (IBM only) and skips if Alpha Vantage refuses the runner;
-> the four Tiingo tests skip with `TIINGO_API_KEY not set`. A broken Tiingo
-> collector would still pass CI. Tracked in
-> [deploy-splunk-app-action#22](https://github.com/livehybrid/deploy-splunk-app-action/issues/22).
+| Tier | Where | What |
+|------|-------|------|
+| `tests/unit/` | every push, Python 3.9 and 3.13 | client: retries, 429, errors, checkpoints, closed crypto bars, EOD gap fill |
+| `tests/test_mock_tiingo_e2e.py` | every push except Dependabot, Splunk 10.0 and 10.6.0 | all four inputs against a synthetic Tiingo (`docker/mock`): values, `_time`, no duplicates over three runs, catch-up after a stop, 429, 5xx, bad key, unknown symbols, key never in a URL or a log |
+| `tests/live/test_live_tiingo.py` | push to main, weekly schedule, manual runs; Splunk 10.6.0 | all four inputs against the real API, checked against Tiingo's own answer fetched by the test; about 17 requests a run |
+
+Splunk runs in Asia/Kolkata in the harness, so a timestamp read in local time
+instead of UTC fails the tests. The live job needs the `TIINGO_API_KEY` repo
+secret; a 429 from Tiingo fails it with `TIINGO RATE LIMITED`. Alpha Vantage
+runs live on its public `demo` key (IBM only) and skips if Alpha Vantage
+refuses the runner.
+
+## Tiingo inputs: behaviour
+
+From the release after 1.0.7, every Tiingo input keeps a checkpoint (a JSON file per input in
+Splunk's modular-input checkpoint directory) and indexes only what is new:
+
+| Input | Endpoint | Indexed per run | Event time |
+|-------|----------|-----------------|------------|
+| Tiingo IEX Current | `/iex/` | a quote whose `timestamp` is newer than the last one | `timestamp` |
+| Tiingo Stock EndOfDay | `/tiingo/daily/prices` | a trading day not yet indexed; after a stop, the days missed (from `/tiingo/daily/<ticker>/prices`) | the day at 00:00 UTC |
+| Tiingo Crypto EndOfDay | `/tiingo/crypto/prices` (hourly) | hourly bars that have closed, from the checkpoint's day (at most 7 days back) | bar start |
+| Tiingo Forex Current | `/tiingo/fx/top` | a quote whose `quoteTimestamp` is newer than the last one | `quoteTimestamp` |
+
+Up to 1.0.7 each run indexed the same data again (an EOD day or a crypto bar
+was indexed once per interval, 288 times a day at the default 300 s), the
+crypto bar still in progress was indexed with partial values, an error answer
+(bad key, rate limit) was indexed as an event, and on a Splunk server not on
+UTC an EOD day was put at local midnight. Searches that de-duplicated with
+`dedup` keep working; sums over time are now right without it.
+
+Errors are logged as `run failed kind=<input> status=<n> detail="..."`
+(`rate_limited=1` for a 429) and never include the key, which is sent only in
+the `Authorization` header. A 429 is not retried; 5xx and network errors are
+retried three times. Tiingo's free tier allows about 50 requests an hour and
+1,000 a day: each run is one request per input (plus one per ticker after a
+stop), so four inputs at the default 300 s interval make 48 an hour.
 
 ## Versioning
 
