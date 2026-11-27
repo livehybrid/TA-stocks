@@ -82,7 +82,7 @@ test('account: create, edit and delete; the API key never comes back and lives i
     const secret = `e2e-dummy-key-${Math.random().toString(36).slice(2)}`;
     const secret2 = `e2e-dummy-key2-${Math.random().toString(36).slice(2)}`;
     const check = (s) => ({ app: APP, conf: ACCOUNT_CONF, stanza: name, field: 'api_key', secret: s,
-        handlerPath: `/servicesNS/nobody/${APP}/${ROOT}_account/${name}` });
+        handlerPath: `/servicesNS/nobody/${APP}/${GC.meta.restRoot}_account/${name}` });
     const stanza = () => rest.confStanza(APP, ACCOUNT_CONF, name);
     try {
         await openAccounts(page);
@@ -128,7 +128,7 @@ test('account: create, edit and delete; the API key never comes back and lives i
         await ucc.expectSecretGone(rest, { app: APP, conf: ACCOUNT_CONF, stanza: name });
         errs.assertNone();
     } finally {
-        await rest.del(`/servicesNS/nobody/${APP}/${ROOT}_account/${name}`);
+        await rest.del(`/servicesNS/nobody/${APP}/${GC.meta.restRoot}_account/${name}`);
     }
 });
 

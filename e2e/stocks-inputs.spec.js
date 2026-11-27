@@ -45,11 +45,11 @@ const VALUES = {
 let rest;
 test.beforeAll(async () => {
     rest = await ucc.restClient();
-    const r = await rest.post(`/servicesNS/nobody/${APP}/${ROOT}_account`, { name: ACCOUNT_NAME, api_key: 'e2e-dummy-key' });
+    const r = await rest.post(`/servicesNS/nobody/${APP}/${GC.meta.restRoot}_account`, { name: ACCOUNT_NAME, api_key: 'e2e-dummy-key' });
     expect([200, 201], `create account: ${r.status}`).toContain(r.status);
 });
 test.afterAll(async () => {
-    await rest.del(`/servicesNS/nobody/${APP}/${ROOT}_account/${ACCOUNT_NAME}`);
+    await rest.del(`/servicesNS/nobody/${APP}/${GC.meta.restRoot}_account/${ACCOUNT_NAME}`);
     await rest.dispose();
 });
 test.beforeEach(async ({ page }) => ucc.login(page));
