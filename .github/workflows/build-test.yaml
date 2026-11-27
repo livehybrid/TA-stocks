@@ -241,8 +241,13 @@ jobs:
         # their hosts resolve to nothing inside Splunk for the browser suite.
         if: ${{ !cancelled() }}
         run: |
-          docker exec -u root ta_stocks_splunk sh -c 'printf "127.0.0.1 www.alphavantage.co alphavantage.co www.vanguard.co.uk\n" >> /etc/hosts'
-          docker exec -u root ta_stocks_splunk getent hosts www.alphavantage.co www.vanguard.co.uk
+          docker exec -u root ta_stocks_splunk sh -c 'printf "127.0.0.1 www.alphavantage.co alphavantage.co www.vanguard.co.uk\n::1 www.alphavantage.co alphavantage.co www.vanguard.co.uk\n" >> /etc/hosts'
+          # Both families: an IPv4-only entry still let getent return the real AAAA records.
+          for h in www.alphavantage.co www.vanguard.co.uk; do
+            addrs=$(docker exec ta_stocks_splunk getent ahosts "$h" | awk '{print $1}' | sort -u | tr '\n' ' ')
+            echo "$h -> $addrs"
+            for a in $addrs; do case "$a" in 127.0.0.1|::1) ;; *) echo "::error::$h still resolves to $a"; exit 1;; esac; done
+          done
 
       - name: Setup Node
         if: ${{ !cancelled() }}
