@@ -3,3 +3,7 @@ stage
 dist
 .pytest_cache
 __pycache__
+
+# Playwright
+e2e/node_modules/
+e2e/e2e-results/
