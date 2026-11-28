@@ -37,8 +37,7 @@ jobs:
         uses: livehybrid/deploy-splunk-app-action/splunk-versions@v1
 
   package:
-    # ubuntu-24.04 because ubuntu-latest (26.04) has no Python 3.9.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
@@ -47,7 +46,7 @@ jobs:
         uses: actions/setup-python@v7
         with:
           # ucc-gen vendors whatever pip resolves for THIS interpreter.
-          python-version: "3.9"
+          python-version: "3.13"
 
       - name: Determine version
         id: version
@@ -63,30 +62,6 @@ jobs:
           mkdir -p stage
           cp -r output/TA-stocks stage/TA-stocks
 
-      - name: Vendored libraries support Python 3.13
-        # Every supported Splunk (10.4+) runs the add-on on 3.13.
-        shell: bash
-        run: |
-          pip install --quiet packaging
-          python3 - stage/TA-stocks/lib <<'PY'
-          import email, pathlib, sys
-          from packaging.specifiers import SpecifierSet
-          RUNTIME = "3.13"
-          lib = pathlib.Path(sys.argv[1])
-          metas = sorted(lib.glob("*.dist-info/METADATA"))
-          if not metas:
-              sys.exit(f"no *.dist-info/METADATA under {lib}: cannot check vendored libraries")
-          bad = []
-          for meta in metas:
-              m = email.message_from_string(meta.read_text(errors="replace"))
-              rp = m.get("Requires-Python")
-              if rp and not SpecifierSet(rp).contains(RUNTIME, prereleases=True):
-                  bad.append(f"{m['Name']} {m['Version']} (Requires-Python {rp})")
-          print(f"checked {len(metas)} vendored distributions against Python {RUNTIME}")
-          if bad:
-              sys.exit("vendored libraries that do not support Python " + RUNTIME + ":\n  " + "\n  ".join(bad))
-          PY
-
       - name: Package
         # ucc-gen stamps a timestamp build; app-package stamps the build derived
         # from the version (MAJ*10000+MIN*100+PATCH, so every release changes it
@@ -99,6 +74,9 @@ jobs:
           version-with-hash: ${{ steps.version.outputs.VERSION_WITH_HASH }}
           build: ${{ steps.version.outputs.BUILD }}
           require-python: "3.13"
+          # Every vendored library must run on 3.13 and no compiled extension may
+          # be for another Python (replaces this repo's own Requires-Python step).
+          check-vendored-python: require
 
       - name: Upload package artifact
         uses: actions/upload-artifact@v7
@@ -128,7 +106,7 @@ jobs:
         with:
           # Same interpreter as the package job, so the libraries under test are
           # the ones the artefact vendors.
-          python-version: "3.9"
+          python-version: "3.13"
 
       - name: Install UCC framework + pytest
         run: pip install "splunk-add-on-ucc-framework>=6.6.0" pytest
@@ -214,18 +192,17 @@ jobs:
 
   unit:
     name: unit (python ${{ matrix.python }})
-    # ubuntu-24.04: ubuntu-latest (26.04) has no Python 3.9.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.9", "3.13"]
+        python: ["3.13"]
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
-      - run: pip install "requests>=2.32.5,<2.33.0" "pytest>=8"
+      - run: pip install "requests>=2.32.5" "pytest>=8"
       - run: pytest tests/unit -v -p no:cacheprovider
         env:
           PYTHONDONTWRITEBYTECODE: "1"
@@ -251,7 +228,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
         with:
-          python-version: "3.9"
+          python-version: "3.13"
 
       - name: Install UCC framework + pytest
         run: pip install "splunk-add-on-ucc-framework>=6.6.0" pytest >/dev/null
