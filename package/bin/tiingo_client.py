@@ -1,7 +1,7 @@
 """Tiingo API client and collectors for the four Tiingo inputs.
 
-Kept free of Splunk imports so the unit tests can load it on its own. Python
-3.9 compatible (Splunk 10.1 and earlier run the add-on on 3.9).
+Kept free of Splunk imports so the unit tests can load it on its own. Runs on
+Python 3.13 (every supported Splunk, 10.4+).
 
 Security: the key travels in the Authorization header only, never in a URL, so
 no exception text, proxy log or urllib3 debug line can carry it. Errors carry

@@ -44,7 +44,7 @@ The Tiingo inputs are tested three ways:
 
 | Tier | Where | What |
 |------|-------|------|
-| `tests/unit/` | every push, Python 3.9 and 3.13 | client: retries, 429, errors, checkpoints, closed crypto bars, EOD gap fill |
+| `tests/unit/` | every push, Python 3.13 | client: retries, 429, errors, checkpoints, closed crypto bars, EOD gap fill |
 | `tests/test_mock_tiingo_e2e.py` | every push except Dependabot, Splunk 10.4 and the newest 10.6 | all four inputs against a synthetic Tiingo (`docker/mock`): values, `_time`, no duplicates over three runs, catch-up after a stop, 429, 5xx, bad key, unknown symbols, key never in a URL or a log |
 | `tests/live/test_live_tiingo.py` | push to main, weekly schedule, manual runs; the newest Splunk 10.6 | all four inputs against the real API, checked against Tiingo's own answer fetched by the test; about 17 requests a run |
 
