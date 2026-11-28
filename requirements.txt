@@ -5,6 +5,6 @@
 splunk-add-on-ucc-framework>=6.6.0
 splunk-appinspect>=4.4.0
 requests>=2.32.5
-splunk-sdk>=2.1.1
+splunk-sdk>=3.0.1
 splunktaucclib>=8.2.0
 solnlib>=5.5.0
