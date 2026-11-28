@@ -20,18 +20,16 @@ duplicating events.
 | Attribute | Value |
 |-----------|-------|
 | **Add-on version** | 1.0.x |
-| **Tested against** | Splunk Enterprise 10.0 (Python 3.9) and 10.6 (Python 3.13), real Splunk in Docker, on every CI run |
-| **Python runtime** | 3.13 on Splunk 10.2 and later, 3.9 on Splunk 10.1 and earlier |
-| **Expected compatible** | Splunk Enterprise and Cloud 9.3+ and 10.x |
+| **Tested against** | Splunk Enterprise 10.4 and the newest 10.6 (Python 3.13), real Splunk in Docker, on every CI run |
+| **Python runtime** | 3.13 |
+| **Supported** | Splunk Enterprise and Cloud 10.4 and later |
 | **Deployment roles** | Standalone, Distributed, Search Head Clustering |
 | **AppInspect** | Passes the `cloud`, `future` and `private_victoria` tag sets |
 
-Splunk 10.2 and later ship Python 3.9 and 3.13 side by side; this add-on sets
-`python.required = 3.13`, so it runs on 3.13 there. Splunk 10.1 and earlier
-ignore `python.required` and run it on 3.9 (`python.version = python3`), so the
-code and vendored libraries stay 3.9-compatible (`requests < 2.33`,
-`splunk-sdk < 3`). CI runs the integration tests on Splunk 10.0 (Python 3.9)
-and 10.6 (Python 3.13) to hold both.
+The add-on sets `python.required = 3.13`, which every supported Splunk honours,
+so it runs on Python 3.13; CI checks that splunkd launched every input on 3.13.
+New releases support Splunk 10.4 and later. For an older Splunk, use the last
+release that supported it (1.1.0 was tested on 10.0 and 10.6).
 
 ## Testing
 
@@ -47,8 +45,8 @@ The Tiingo inputs are tested three ways:
 | Tier | Where | What |
 |------|-------|------|
 | `tests/unit/` | every push, Python 3.9 and 3.13 | client: retries, 429, errors, checkpoints, closed crypto bars, EOD gap fill |
-| `tests/test_mock_tiingo_e2e.py` | every push except Dependabot, Splunk 10.0 and 10.6.0 | all four inputs against a synthetic Tiingo (`docker/mock`): values, `_time`, no duplicates over three runs, catch-up after a stop, 429, 5xx, bad key, unknown symbols, key never in a URL or a log |
-| `tests/live/test_live_tiingo.py` | push to main, weekly schedule, manual runs; Splunk 10.6.0 | all four inputs against the real API, checked against Tiingo's own answer fetched by the test; about 17 requests a run |
+| `tests/test_mock_tiingo_e2e.py` | every push except Dependabot, Splunk 10.4 and the newest 10.6 | all four inputs against a synthetic Tiingo (`docker/mock`): values, `_time`, no duplicates over three runs, catch-up after a stop, 429, 5xx, bad key, unknown symbols, key never in a URL or a log |
+| `tests/live/test_live_tiingo.py` | push to main, weekly schedule, manual runs; the newest Splunk 10.6 | all four inputs against the real API, checked against Tiingo's own answer fetched by the test; about 17 requests a run |
 
 Splunk runs in Asia/Kolkata in the harness, so a timestamp read in local time
 instead of UTC fails the tests. The live job needs the `TIINGO_API_KEY` repo
