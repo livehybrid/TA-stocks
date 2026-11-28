@@ -8,7 +8,7 @@
 # splunk-sdk <3) are gone. stocks_helper imports `requests` at module top, so it
 # is listed here (until 1.0.6 the add-on ran on whatever requests Splunk's own
 # Python shipped). splunktaucclib >= 8.2.0 is required by the current ucc-gen.
-# certifi >= 2026.10.19 drops "emSign ECC Root CA - G3" after the eMudhra
+# certifi >= 2026.11.20 drops "emSign ECC Root CA - G3" after the eMudhra
 # intermediate CA key compromise; requests vendors certifi, and the add-on keeps
 # whatever bundle it was built with. CI checks the built package for it.
 #
